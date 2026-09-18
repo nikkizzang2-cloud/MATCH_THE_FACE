@@ -156,7 +156,8 @@ body {
 
 .person-card:hover,
 .person-card.matched,
-.person-card.dragging {
+.person-card.dragging,
+.person-card.revealed {
   filter: blur(0);
 }
 
@@ -419,10 +420,6 @@ body {
 
 
 .minimap {
-  width: 230px !important;
-  }
-
-.minimap {
   position: fixed;
   right: 30px;
   bottom: 30px;
@@ -504,17 +501,28 @@ body {
 }
 
 
- .minimap {
+@media (max-width: 704px) {
+  .viewport {
+    touch-action: none;
+  }
+
+  .intro {
+    top: 16px;
+  }
+
+  .intro > summary.w {
+    font-size: 13pt;
+  }
+
+  .minimap {
     right: 12px;
     bottom: 12px;
-    width: 160px;
+    width: 152px;
     padding: 8px;
   }
 
-
-@media (max-width: 704px) {
   .person-card {
-    width: 200px;
+    width: 140px;
   }
 
   .group-panel {
@@ -523,6 +531,21 @@ body {
     left: 12px;
     bottom: 12px;
     width: auto;
+  }
+
+  .group-panel-title {
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+
+  .group-panel-desc {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .intro[open] .w-detail {
+    top: 60px;
+    max-width: 300px;
   }
 
   .modal-panel {

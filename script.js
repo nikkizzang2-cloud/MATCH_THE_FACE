@@ -381,11 +381,33 @@ function bootstrap() {
     minScale: 0.65,
     maxScale: 2,
     isPanning: false,
+    isPinching: false,
     panStartX: 0,
     panStartY: 0,
     worldStartX: 0,
-    worldStartY: 0
+    worldStartY: 0,
+    pinchStartDistance: 0,
+    pinchStartScale: 1,
+    pinchWorldPointX: 0,
+    pinchWorldPointY: 0
   };
+
+  const activePointers = new Map();
+
+  function getPointerDistance(p1, p2) {
+    return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+  }
+
+  function getPointerMidpoint(p1, p2) {
+    return {
+      x: (p1.clientX + p2.clientX) / 2,
+      y: (p1.clientY + p2.clientY) / 2
+    };
+  }
+
+  function isMobileViewport() {
+    return window.innerWidth <= 704;
+  }
 
   function getMinimapScale() {
     if (!minimapStage) return { x: 1, y: 1 };
@@ -849,19 +871,74 @@ function bootstrap() {
     if (event.target.closest(".person-card")) return;
     if (!modal.hidden) return;
     if (pdfPreviewModal && !pdfPreviewModal.hidden) return;
-    if (event.pointerType !== "mouse") return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.pointerType === "touch" && !isMobileViewport()) return;
 
-    state.isPanning = true;
-    state.panStartX = event.clientX;
-    state.panStartY = event.clientY;
-    state.worldStartX = state.worldX;
-    state.worldStartY = state.worldY;
+    if (event.pointerType === "touch") {
+      document
+        .querySelectorAll(".person-card.revealed")
+        .forEach((c) => c.classList.remove("revealed"));
+    }
 
-    viewport.classList.add("panning");
-    viewport.setPointerCapture(event.pointerId);
+    activePointers.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+
+    if (activePointers.size === 2) {
+      const [p1, p2] = [...activePointers.values()];
+      const midpoint = getPointerMidpoint(p1, p2);
+
+      state.isPinching = true;
+      state.isPanning = false;
+      state.pinchStartDistance = getPointerDistance(p1, p2);
+      state.pinchStartScale = state.scale;
+      state.pinchWorldPointX = (midpoint.x - state.worldX) / state.scale;
+      state.pinchWorldPointY = (midpoint.y - state.worldY) / state.scale;
+      return;
+    }
+
+    if (activePointers.size === 1) {
+      state.isPanning = true;
+      state.panStartX = event.clientX;
+      state.panStartY = event.clientY;
+      state.worldStartX = state.worldX;
+      state.worldStartY = state.worldY;
+
+      viewport.classList.add("panning");
+      viewport.setPointerCapture(event.pointerId);
+    }
   }
 
   function movePan(event) {
+    if (activePointers.has(event.pointerId)) {
+      activePointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY
+      });
+    }
+
+    if (state.isPinching && activePointers.size === 2) {
+      const [p1, p2] = [...activePointers.values()];
+      const midpoint = getPointerMidpoint(p1, p2);
+      const currentDistance = getPointerDistance(p1, p2);
+
+      if (state.pinchStartDistance > 0) {
+        const nextScale = clamp(
+          state.pinchStartScale * (currentDistance / state.pinchStartDistance),
+          state.minScale,
+          state.maxScale
+        );
+
+        state.scale = nextScale;
+        state.worldX = midpoint.x - state.pinchWorldPointX * state.scale;
+        state.worldY = midpoint.y - state.pinchWorldPointY * state.scale;
+
+        applyWorldTransform();
+      }
+      return;
+    }
+
     if (!state.isPanning) return;
 
     const dx = event.clientX - state.panStartX;
@@ -873,13 +950,28 @@ function bootstrap() {
   }
 
   function endPan(event) {
-    if (!state.isPanning) return;
+    activePointers.delete(event.pointerId);
 
-    state.isPanning = false;
-    viewport.classList.remove("panning");
+    if (state.isPinching && activePointers.size < 2) {
+      state.isPinching = false;
+    }
 
-    if (viewport.hasPointerCapture(event.pointerId)) {
-      viewport.releasePointerCapture(event.pointerId);
+    if (state.isPanning && activePointers.size === 0) {
+      state.isPanning = false;
+      viewport.classList.remove("panning");
+
+      if (viewport.hasPointerCapture(event.pointerId)) {
+        viewport.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    if (!state.isPinching && activePointers.size === 1) {
+      const [remaining] = [...activePointers.values()];
+      state.isPanning = true;
+      state.panStartX = remaining.clientX;
+      state.panStartY = remaining.clientY;
+      state.worldStartX = state.worldX;
+      state.worldStartY = state.worldY;
     }
   }
 
@@ -942,11 +1034,15 @@ function bootstrap() {
   viewport.addEventListener("pointermove", movePan);
   viewport.addEventListener("pointerup", endPan);
   viewport.addEventListener("pointercancel", endPan);
+  viewport.addEventListener("pointerleave", endPan);
   viewport.addEventListener("wheel", handleWheel, { passive: false });
 
   centerWorld();
   updateLiveGroupPanel();
-  window.addEventListener("resize", applyWorldTransform);
+  window.addEventListener("resize", () => {
+    applyWorldTransform();
+    updateLiveGroupPanel();
+  });
 }
 
 function setupCardInteraction(
@@ -967,7 +1063,7 @@ function setupCardInteraction(
 
   card.addEventListener("pointerdown", (event) => {
     event.stopPropagation();
-    if (event.button !== 0) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
 
     bringToFront();
 
@@ -1011,7 +1107,20 @@ function setupCardInteraction(
       updateLiveGroupPanel();
 
       if (!moved) {
-        openModal(person);
+        const isTouch = upEvent.pointerType === "touch";
+        const alreadyRevealed =
+          card.classList.contains("revealed") || card.classList.contains("matched");
+
+        if (isTouch && !alreadyRevealed) {
+          document
+            .querySelectorAll(".person-card.revealed")
+            .forEach((otherCard) => {
+              if (otherCard !== card) otherCard.classList.remove("revealed");
+            });
+          card.classList.add("revealed");
+        } else {
+          openModal(person);
+        }
       }
     };
 
