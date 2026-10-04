@@ -680,25 +680,27 @@ function bootstrap() {
     const anchorCard = getCardById(members[anchorIndex]);
     if (!anchorCard) return null;
 
-    const gap = 18;
-    const margin = 20;
+    const mobile = isMobileViewport();
+    const gap = mobile ? 4 : 18;
+    const margin = mobile ? 12 : 20;
 
     panel.hidden = false;
     panel.style.left = "0px";
     panel.style.top = "0px";
 
-    const panelWidth = panel.offsetWidth || 260;
-    const panelHeight = panel.offsetHeight || 160;
+    const panelWidth = panel.offsetWidth || (mobile ? 220 : 260);
+    const panelHeight = panel.offsetHeight || (mobile ? 110 : 160);
 
     const person = getPersonByCard(anchorCard);
     const anchorLeft = person.x;
     const anchorTop = person.y;
+    const anchorSize = anchorCard.offsetWidth || CARD_SIZE;
 
     const candidatePositions = [
-      { left: anchorLeft + CARD_SIZE + gap, top: anchorTop },
+      { left: anchorLeft + anchorSize + gap, top: anchorTop },
       { left: anchorLeft - panelWidth - gap, top: anchorTop },
       { left: anchorLeft, top: anchorTop - panelHeight - gap },
-      { left: anchorLeft, top: anchorTop + CARD_SIZE + gap }
+      { left: anchorLeft, top: anchorTop + anchorSize + gap }
     ];
 
     function clampPanelPosition(pos) {

@@ -526,11 +526,9 @@ body {
   }
 
   .group-panel {
-    top: auto;
-    right: 12px;
-    left: 12px;
-    bottom: 12px;
-    width: auto;
+    width: 220px;
+    max-width: 220px;
+    padding: 12px 14px;
   }
 
   .group-panel-title {
